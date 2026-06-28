@@ -1,24 +1,27 @@
 /**
  * paths.ts — Filesystem path utilities for team state storage.
  *
- * Storage layout (same convention as Claude Code):
- *   ~/.pi/agent/teams/<teamId>/
+ * Storage layout:
+ *   <agentDir>/teams/<teamId>/
  *     config.json
  *     tasks/<taskListId>/<id>.json
  *     mailboxes/<namespace>/inboxes/<agent>.json
+ *
+ * agentDir is resolved via Pi SDK's getAgentDir(), which respects
+ * the PI_CODING_AGENT_DIR env var. This ensures teams data lands
+ * in the correct location when the user has a custom agent directory
+ * (e.g. in dotfiles).
+ *
+ * Claude Code equivalent: ~/.claude/teams/<teamName>/
  */
 
-import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { getAgentDir } from '@earendil-works/pi-coding-agent'
 
 const TEAMS_ROOT_NAME = 'teams'
 
-function getPiAgentDir(): string {
-  return join(homedir(), '.pi', 'agent')
-}
-
 export function getTeamsRootDir(): string {
-  return join(getPiAgentDir(), TEAMS_ROOT_NAME)
+  return join(getAgentDir(), TEAMS_ROOT_NAME)
 }
 
 export function getTeamDir(teamId: string): string {
