@@ -134,10 +134,14 @@ export function isInsideTmux(): boolean {
  * Returns the pane ID.
  */
 export async function createTeammatePane(
+  name: string,
+  color: string,
+  teammateCount: number,
 ): Promise<string> {
   const release = await acquirePaneCreationLock()
   try {
     let paneId: string
+    if (isInsideTmux()) {
       // Inside tmux: split current window
       const firstTeammate = teammateCount <= 1
       if (firstTeammate) {
@@ -164,7 +168,6 @@ export async function createTeammatePane(
         )
       } catch {
         // tmux not available or failed — return empty paneId
-        // caller will still start the worker (without visible pane)
         return ''
       }
     }
@@ -174,13 +177,13 @@ export async function createTeammatePane(
     tmux('set', '-p', '-t', paneId, 'pane-active-border-style', `fg=${tmuxColor}`)
     tmux('set', '-p', '-t', paneId, 'pane-border-format',
       ` #[fg=${tmuxColor},bold]#{pane_index} ${name} `)
+    return paneId
   } finally {
     release()
   }
 }
 
 /**
- * Send a command to a pane.
  */
 export async function sendCommandToPane(paneId: string, command: string): Promise<void> {
   if (!paneId) return
