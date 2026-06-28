@@ -189,40 +189,29 @@ export function runLeader(pi: ExtensionAPI): void {
 
   let widgetSuppressed = false
 
-  const widgetFactory = {
-    render: () => {
-      const lines: string[] = []
-      lines.push(`Team: ${currentTeamId ?? '(none)'}`)
-      if (teammates.size === 0) {
-        lines.push('  No teammates')
-      } else {
-        for (const [, t] of teammates) {
-          const icon =
-            t.status === 'streaming' ? '⠹' :
-            t.status === 'idle' ? '○' :
-            t.status === 'starting' ? '◌' :
-            t.status === 'stopped' ? '■' : '✗'
-          const taskInfo = t.currentTaskId ? ` #${t.currentTaskId}` : ''
-          lines.push(`  ${icon} ${t.name}${taskInfo} (${t.status})`)
-        }
+  const renderWidgetText = (): string => {
+    const lines: string[] = []
+    lines.push(`Team: ${currentTeamId ?? '(none)'}`)
+    if (teammates.size === 0) {
+      lines.push('  No teammates')
+    } else {
+      for (const [, t] of teammates) {
+        const icon =
+          t.status === 'streaming' ? '⠹' :
+          t.status === 'idle' ? '○' :
+          t.status === 'starting' ? '◌' :
+          t.status === 'stopped' ? '■' : '✗'
+        const taskInfo = t.currentTaskId ? ` #${t.currentTaskId}` : ''
+        lines.push(`  ${icon} ${t.name}${taskInfo} (${t.status})`)
       }
-      return lines.join('\n')
-    },
+    }
+    return lines.join('\n')
   }
-
   const renderWidget = () => {
     if (!currentCtx || widgetSuppressed) return
-    currentCtx.ui.setWidget('pi-teams-tmux', widgetFactory)
-  }
-
-  const hideWidget = () => {
-    widgetSuppressed = true
-    if (currentCtx) currentCtx.ui.setWidget('pi-teams-tmux', undefined)
-  }
-
-  const restoreWidget = () => {
-    widgetSuppressed = false
-    renderWidget()
+    try {
+      currentCtx.ui.setWidget('pi-teams-tmux', renderWidgetText().split('\n'))
+    } catch { /* widget best-effort */ }
   }
 
   // ─── Leader inbox polling ──────────────────────────────
@@ -859,7 +848,7 @@ export function runLeader(pi: ExtensionAPI): void {
         ctx.ui.notify('No active team. Create one with team_create tool.', 'info')
         return
       }
-      ctx.ui.notify(widgetFactory.render(), 'info')
+      ctx.ui.notify(renderWidgetText(), 'info')
     },
   })
 
