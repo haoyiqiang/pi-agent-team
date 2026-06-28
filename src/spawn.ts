@@ -183,8 +183,7 @@ export async function createTeammatePane(
   }
 }
 
-/**
- */
+/** Send a command string to a tmux pane. */
 export async function sendCommandToPane(paneId: string, command: string): Promise<void> {
   if (!paneId) return
   // Wait for shell initialization (same as Claude Code's PANE_SHELL_INIT_DELAY_MS)
@@ -200,14 +199,6 @@ export function setPaneBorderColor(paneId: string, color: string): void {
   tmux('set', '-p', '-t', paneId, 'pane-active-border-style', `fg=${tmuxColor}`)
 }
 
-/**
- * Set pane border color.
- */
-export function setPaneBorderColor(paneId: string, color: string): void {
-  const tmuxColor = getTmuxColor(color)
-  tmux('set', '-p', '-t', paneId, 'pane-border-style', `fg=${tmuxColor}`)
-  tmux('set', '-p', '-t', paneId, 'pane-active-border-style', `fg=${tmuxColor}`)
-}
 
 /**
  * Enable pane border status globally.
