@@ -134,50 +134,46 @@ export function isInsideTmux(): boolean {
  * Returns the pane ID.
  */
 export async function createTeammatePane(
-  name: string,
-  color: string,
-  teammateCount: number,
 ): Promise<string> {
   const release = await acquirePaneCreationLock()
   try {
     let paneId: string
-
-    if (isInsideTmux()) {
       // Inside tmux: split current window
       const firstTeammate = teammateCount <= 1
       if (firstTeammate) {
-        // First teammate: horizontal split, give 70% to teammate side
         paneId = tmuxOrThrow(
           'split-window', '-h',
           '-l', '70%',
           '-P', '-F', '#{pane_id}',
         )
       } else {
-        // Subsequent teammates: vertical split in the right column
         paneId = tmuxOrThrow(
           'split-window', '-v',
           '-P', '-F', '#{pane_id}',
         )
       }
     } else {
-      // Outside tmux: create/use external swarm session
-      const sessionName = ensureExternalSession()
-      paneId = tmuxOrThrow(
-        'split-window', '-h',
-        '-t', `${sessionName}:swarm-view`,
-        '-l', '70%',
-        '-P', '-F', '#{pane_id}',
-      )
+      // Outside tmux: try to create/use external swarm session
+      try {
+        const sessionName = ensureExternalSession()
+        paneId = tmuxOrThrow(
+          'split-window', '-h',
+          '-t', `${sessionName}:swarm-view`,
+          '-l', '70%',
+          '-P', '-F', '#{pane_id}',
+        )
+      } catch {
+        // tmux not available or failed — return empty paneId
+        // caller will still start the worker (without visible pane)
+        return ''
+      }
     }
-
     // Style the pane
     const tmuxColor = getTmuxColor(color)
     tmux('set', '-p', '-t', paneId, 'pane-border-style', `fg=${tmuxColor}`)
     tmux('set', '-p', '-t', paneId, 'pane-active-border-style', `fg=${tmuxColor}`)
     tmux('set', '-p', '-t', paneId, 'pane-border-format',
       ` #[fg=${tmuxColor},bold]#{pane_index} ${name} `)
-
-    return paneId
   } finally {
     release()
   }
@@ -187,9 +183,18 @@ export async function createTeammatePane(
  * Send a command to a pane.
  */
 export async function sendCommandToPane(paneId: string, command: string): Promise<void> {
+  if (!paneId) return
   // Wait for shell initialization (same as Claude Code's PANE_SHELL_INIT_DELAY_MS)
   await sleep(PANE_SHELL_INIT_DELAY_MS)
   tmuxOrThrow('send-keys', '-t', paneId, command, 'Enter')
+}
+
+/** Set pane border color. */
+export function setPaneBorderColor(paneId: string, color: string): void {
+  if (!paneId) return
+  const tmuxColor = getTmuxColor(color)
+  tmux('set', '-p', '-t', paneId, 'pane-border-style', `fg=${tmuxColor}`)
+  tmux('set', '-p', '-t', paneId, 'pane-active-border-style', `fg=${tmuxColor}`)
 }
 
 /**

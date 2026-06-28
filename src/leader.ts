@@ -457,7 +457,8 @@ export function runLeader(pi: ExtensionAPI): void {
       const envStr = Object.entries(env)
         .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
         .join(' ')
-      const spawnCommand = `cd ${JSON.stringify(params.cwd)} && ${envStr} ${piBinary} --no-extensions`
+      const extPath = join(import.meta.dirname!, 'index.ts')
+      const spawnCommand = `cd ${JSON.stringify(params.cwd)} && ${envStr} ${piBinary} --no-extensions -e ${JSON.stringify(extPath)}`
 
       // Send to pane (async, includes shell init delay)
       await sendCommandToPane(paneId, spawnCommand)
