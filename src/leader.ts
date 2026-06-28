@@ -503,16 +503,20 @@ export function runLeader(pi: ExtensionAPI): void {
     execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
       const teamDir = getTeamDir(sanitizeName(params.team_name))
       const taskListId = sanitizeName(params.team_name)
+      // Strip team suffix from owner name if model used formatAgentId format
+      const rawOwner = params.owner ?? ''
+      const ownerName = rawOwner
+        ? rawOwner.replace(new RegExp(`-${sanitizeName(params.team_name)}$`), '')
+        : undefined
       const task = await createTask(teamDir, taskListId, {
         subject: params.subject,
         description: params.description,
-        owner: params.owner ? sanitizeName(params.owner) : undefined,
+        owner: ownerName ? sanitizeName(ownerName) : undefined,
         dependencies: params.dependencies,
       })
 
       if (params.owner) {
-        const ts = new Date().toISOString()
-        await writeToMailbox(teamDir, TEAM_MAILBOX_NS, sanitizeName(params.owner), {
+        await writeToMailbox(teamDir, TEAM_MAILBOX_NS, ownerName ?? sanitizeName(params.owner), {
           from: 'team-lead',
           text: JSON.stringify({ type: 'task_assignment', taskId: task.id, from: 'team-lead', subject: task.subject, timestamp: ts }),
           timestamp: ts,
