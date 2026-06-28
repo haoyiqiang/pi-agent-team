@@ -55,12 +55,12 @@ async function acquirePaneCreationLock(): Promise<() => void> {
 function tmux(...args: string[]): { stdout: string; code: number } {
   try {
     const result = execFileSync(TMUX_CMD, args, { encoding: 'utf-8', timeout: 10_000 })
-    return { stdout: (result.stdout ?? '').trim(), code: 0 }
+    // When encoding is 'utf-8', execFileSync returns string directly, not { stdout: string }
+    return { stdout: (typeof result === 'string' ? result : result.stdout ?? '').trim(), code: 0 }
   } catch (err: unknown) {
     const error = err as { stderr?: string; status?: number; message?: string }
     return { stdout: error.stderr ?? error.message ?? '', code: error.status ?? 1 }
   }
-}
 
 function tmuxOrThrow(...args: string[]): string {
   const result = tmux(...args)

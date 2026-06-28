@@ -76,6 +76,7 @@ export function runWorker(pi: ExtensionAPI): void {
   let planMode = isPlanModeRequired()
   let planApproved = false
   let planRequestId: string | null = null
+  let waitingForApproval = false
   let lastPeerDmSummary: string | null = null
   const seenShutdownIds = new Set<string>()
 
@@ -131,6 +132,7 @@ export function runWorker(pi: ExtensionAPI): void {
     execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
       const reqId = randomUUID()
       planRequestId = reqId
+      waitingForApproval = true
       const ts = new Date().toISOString()
 
       await writeToMailbox(teamDir, leadName, {
@@ -373,7 +375,7 @@ export function runWorker(pi: ExtensionAPI): void {
     isStreaming = false
 
     // Plan mode: if plan not yet approved, submit for approval
-    if (planMode && !planApproved && currentTaskId && !planRequestId) {
+    if (planMode && !planApproved && currentTaskId && !waitingForApproval) {
       const lastText = extractLastAssistantText(event)
       const reqId = randomUUID()
       planRequestId = reqId

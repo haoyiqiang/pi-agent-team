@@ -214,6 +214,16 @@ export function runLeader(pi: ExtensionAPI): void {
     } catch { /* widget best-effort */ }
   }
 
+  const hideWidget = () => {
+    widgetSuppressed = true
+    if (currentCtx) currentCtx.ui.setWidget('pi-teams-tmux', undefined)
+  }
+
+  const restoreWidget = () => {
+    widgetSuppressed = false
+    renderWidget()
+  }
+
   // ─── Leader inbox polling ──────────────────────────────
 
   let inboxTimer: ReturnType<typeof setInterval> | null = null
