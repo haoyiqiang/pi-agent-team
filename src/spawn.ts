@@ -232,6 +232,7 @@ export function killPane(paneId: string): boolean {
  * Hide a pane by breaking it out into a hidden window.
  */
 export function hidePane(paneId: string): boolean {
+  if (!paneId) return false
   const result = tmux('break-pane', '-s', paneId, '-t', HIDDEN_SESSION_NAME)
   return result.code === 0
 }

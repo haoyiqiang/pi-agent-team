@@ -89,7 +89,7 @@ export async function popUnreadMessages(teamDir: string, agentName: string): Pro
     if (unread.length === 0) return []
     // Keep read messages, return unread
     messages.length = 0
-    messages.push(...read)
+    messages.push(...messages.filter(m => m.read))
     return unread
   })
 }

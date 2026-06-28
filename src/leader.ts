@@ -524,6 +524,7 @@ export function runLeader(pi: ExtensionAPI): void {
         owner: ownerName ? sanitizeName(ownerName) : undefined,
         dependencies: params.dependencies,
       })
+      const ts = new Date().toISOString()
 
       if (params.owner) {
         await writeToMailbox(teamDir, ownerName ?? sanitizeName(params.owner), {
