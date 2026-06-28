@@ -49,7 +49,7 @@ export async function requestTeammateShutdown(
     timestamp: ts,
   }
 
-  await writeToMailbox(teamDir, TEAM_MAILBOX_NS, agentName, {
+  await writeToMailbox(teamDir, agentName, {
     from: 'team-lead',
     text: JSON.stringify(shutdownMsg),
     timestamp: ts,
@@ -59,7 +59,7 @@ export async function requestTeammateShutdown(
   const deadline = Date.now() + SHUTDOWN_HANDSHAKE_TIMEOUT_MS
   while (Date.now() < deadline) {
     // Poll leader's inbox for response
-    const leadMessages = await popUnreadMessages(teamDir, TEAM_MAILBOX_NS, 'team-lead')
+    const leadMessages = await popUnreadMessages(teamDir, 'team-lead')
 
     for (const msg of leadMessages) {
       const parsed = tryParseMessage(msg.text)

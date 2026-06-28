@@ -95,14 +95,14 @@ export function runWorker(pi: ExtensionAPI): void {
       // Track DM summary for idle notification
       lastPeerDmSummary = params.message.slice(0, 100)
 
-      await writeToMailbox(teamDir, TEAM_MAILBOX_NS, params.recipient, {
+      await writeToMailbox(teamDir, params.recipient, {
         from: agentName,
         text: params.message,
         timestamp: ts,
         ...(params.urgent ? { urgent: true } : {}),
       })
       // CC leader with notification
-      await writeToMailbox(teamDir, TEAM_MAILBOX_NS, leadName, {
+      await writeToMailbox(teamDir, leadName, {
         from: agentName,
         text: JSON.stringify({
           type: 'peer_dm_sent',
@@ -133,7 +133,7 @@ export function runWorker(pi: ExtensionAPI): void {
       planRequestId = reqId
       const ts = new Date().toISOString()
 
-      await writeToMailbox(teamDir, TEAM_MAILBOX_NS, leadName, {
+      await writeToMailbox(teamDir, leadName, {
         from: agentName,
         text: JSON.stringify({
           type: 'plan_approval_request',
@@ -166,7 +166,7 @@ export function runWorker(pi: ExtensionAPI): void {
       const reqId = randomUUID()
       const ts = new Date().toISOString()
 
-      await writeToMailbox(teamDir, TEAM_MAILBOX_NS, leadName, {
+      await writeToMailbox(teamDir, leadName, {
         from: agentName,
         text: JSON.stringify({
           type: 'permission_request',
@@ -182,7 +182,7 @@ export function runWorker(pi: ExtensionAPI): void {
       // Wait for response by polling our own inbox
       const deadline = Date.now() + 60_000
       while (Date.now() < deadline) {
-        const msgs = await popUnreadMessages(teamDir, TEAM_MAILBOX_NS, agentName)
+        const msgs = await popUnreadMessages(teamDir, agentName)
         for (const msg of msgs) {
           const parsed = tryParseJson(msg.text)
           if (parsed && isPermissionResponse(parsed) && parsed.requestId === reqId) {
@@ -204,7 +204,7 @@ export function runWorker(pi: ExtensionAPI): void {
   const poll = async () => {
     while (!pollAbort) {
       try {
-        const unread = await popUnreadMessages(teamDir, TEAM_MAILBOX_NS, agentName)
+        const unread = await popUnreadMessages(teamDir, agentName)
 
         for (const msg of unread) {
           const parsed = tryParseJson(msg.text)
@@ -215,7 +215,7 @@ export function runWorker(pi: ExtensionAPI): void {
             const ts = new Date().toISOString()
 
             if (currentTaskId) {
-              await writeToMailbox(teamDir, TEAM_MAILBOX_NS, leadName, {
+              await writeToMailbox(teamDir, leadName, {
                 from: agentName,
                 text: JSON.stringify({
                   type: 'shutdown_rejected',
@@ -229,7 +229,7 @@ export function runWorker(pi: ExtensionAPI): void {
             } else {
               shutdownInProgress = true
               pollAbort = true
-              await writeToMailbox(teamDir, TEAM_MAILBOX_NS, leadName, {
+              await writeToMailbox(teamDir, leadName, {
                 from: agentName,
                 text: JSON.stringify({
                   type: 'shutdown_approved',
@@ -299,7 +299,7 @@ export function runWorker(pi: ExtensionAPI): void {
     try {
       if (autoClaim) {
         await sleep(Math.floor(Math.random() * 250))
-        const claimed = await claimNextAvailableTask(teamDir, taskListId, agentName)
+        const claimed = await claimNextAvailableTask(taskListId, agentName)
         if (claimed) {
           currentTaskId = claimed.id
           isStreaming = true
@@ -320,7 +320,7 @@ export function runWorker(pi: ExtensionAPI): void {
     completedStatus?: 'completed' | 'failed',
   ) => {
     const ts = new Date().toISOString()
-    await writeToMailbox(teamDir, TEAM_MAILBOX_NS, leadName, {
+    await writeToMailbox(teamDir, leadName, {
       from: agentName,
       text: JSON.stringify({
         type: 'idle_notification',
@@ -379,7 +379,7 @@ export function runWorker(pi: ExtensionAPI): void {
       planRequestId = reqId
       const ts = new Date().toISOString()
 
-      await writeToMailbox(teamDir, TEAM_MAILBOX_NS, leadName, {
+      await writeToMailbox(teamDir, leadName, {
         from: agentName,
         text: JSON.stringify({
           type: 'plan_approval_request',
@@ -404,11 +404,11 @@ export function runWorker(pi: ExtensionAPI): void {
     if (taskId) {
       const result = extractLastAssistantText(event)
       if (result.trim().length > 0) {
-        await completeTask(teamDir, taskListId, taskId, agentName, result)
+        await completeTask(taskListId, taskId, agentName, result)
         completedTaskId = taskId
         completedStatus = 'completed'
       } else {
-        await updateTask(teamDir, taskListId, taskId, t => ({
+        await updateTask(taskListId, taskId, t => ({
           ...t,
           status: 'pending',
           metadata: { ...t.metadata, abortedAt: new Date().toISOString() },

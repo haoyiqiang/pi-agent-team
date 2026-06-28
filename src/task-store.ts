@@ -1,14 +1,15 @@
 /**
- * task-store.ts — Shared task list with file persistence and auto-claim.
+ * task-store.ts — Shared task list (1:1 with Claude Code's Task tools)
  *
- * Claude Code-equivalent of TaskCreate/Get/List/Update tools.
- * Tasks are stored as individual JSON files under:
- *   ~/.pi/agent/teams/<teamId>/tasks/<taskListId>/<id>.json
+ * Claude Code: ~/.claude/tasks/<taskListId>/<id>.json
+ * Pi:          <agentDir>/tasks/<taskListId>/<id>.json
+ *
+ * Tasks are stored at the agentDir level (not under team dir), matching
+ * Claude Code's layout exactly.
  */
 
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
 import { getTasksDir, getTaskPath, getHighWatermarkPath } from './paths.js'
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed'
@@ -28,8 +29,6 @@ export type TeamTask = {
   metadata?: Record<string, unknown>
 }
 
-// ─── Helpers ───────────────────────────────────────────────────
-
 async function ensureDir(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true })
 }
@@ -38,9 +37,7 @@ async function readHighWatermark(path: string): Promise<number> {
   try {
     const content = await readFile(path, 'utf-8')
     return parseInt(content.trim(), 10) || 0
-  } catch {
-    return 0
-  }
+  } catch { return 0 }
 }
 
 async function writeHighWatermark(path: string, value: number): Promise<void> {
@@ -51,10 +48,8 @@ function now(): string {
   return new Date().toISOString()
 }
 
-// ─── CRUD ──────────────────────────────────────────────────────
-
+/** Create a task with sequential numeric ID. */
 export async function createTask(
-  teamDir: string,
   taskListId: string,
   opts: {
     subject: string
@@ -63,48 +58,37 @@ export async function createTask(
     dependencies?: string[]
   },
 ): Promise<TeamTask> {
-  const tasksDir = getTasksDir(teamDir, taskListId)
+  const tasksDir = getTasksDir(taskListId)
   await ensureDir(tasksDir)
 
-  const hwPath = getHighWatermarkPath(teamDir, taskListId)
+  const hwPath = getHighWatermarkPath(taskListId)
   let nextId = await readHighWatermark(hwPath)
   nextId++
   await writeHighWatermark(hwPath, nextId)
 
   const id = String(nextId)
   const task: TeamTask = {
-    id,
-    subject: opts.subject,
-    description: opts.description ?? '',
-    status: 'pending',
-    owner: opts.owner,
-    dependencies: opts.dependencies ?? [],
-    blockedBy: [],
+    id, subject: opts.subject, description: opts.description ?? '',
+    status: 'pending', owner: opts.owner,
+    dependencies: opts.dependencies ?? [], blockedBy: [],
     createdAt: now(),
   }
 
-  await writeFile(getTaskPath(teamDir, taskListId, id), JSON.stringify(task, null, 2), 'utf-8')
+  await writeFile(getTaskPath(taskListId, id), JSON.stringify(task, null, 2), 'utf-8')
   return task
 }
 
-export async function getTask(
-  teamDir: string,
-  taskListId: string,
-  taskId: string,
-): Promise<TeamTask | null> {
+/** Get a single task. */
+export async function getTask(taskListId: string, taskId: string): Promise<TeamTask | null> {
   try {
-    const content = await readFile(getTaskPath(teamDir, taskListId, taskId), 'utf-8')
+    const content = await readFile(getTaskPath(taskListId, taskId), 'utf-8')
     return JSON.parse(content) as TeamTask
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
-export async function listTasks(
-  teamDir: string,
-  taskListId: string,
-): Promise<TeamTask[]> {
-  const tasksDir = getTasksDir(teamDir, taskListId)
+/** List all tasks sorted by ID. */
+export async function listTasks(taskListId: string): Promise<TeamTask[]> {
+  const tasksDir = getTasksDir(taskListId)
   if (!existsSync(tasksDir)) return []
 
   const entries = await readdir(tasksDir)
@@ -112,166 +96,110 @@ export async function listTasks(
   for (const entry of entries) {
     if (!entry.endsWith('.json') || entry.startsWith('.')) continue
     try {
-      const content = await readFile(getTaskPath(teamDir, taskListId, entry.replace('.json', '')), 'utf-8')
+      const content = await readFile(getTaskPath(taskListId, entry.replace('.json', '')), 'utf-8')
       results.push(JSON.parse(content) as TeamTask)
-    } catch {
-      // skip corrupt files
-    }
+    } catch { /* skip corrupt */ }
   }
   return results.sort((a, b) => parseInt(a.id) - parseInt(b.id))
 }
 
+/** Update a task. Return null if not found. */
 export async function updateTask(
-  teamDir: string,
-  taskListId: string,
-  taskId: string,
+  taskListId: string, taskId: string,
   updater: (task: TeamTask) => TeamTask | null,
 ): Promise<TeamTask | null> {
-  const existing = await getTask(teamDir, taskListId, taskId)
+  const existing = await getTask(taskListId, taskId)
   if (!existing) return null
 
   const updated = updater({ ...existing })
   if (!updated) return null
 
-  await writeFile(
-    getTaskPath(teamDir, taskListId, taskId),
-    JSON.stringify(updated, null, 2),
-    'utf-8',
-  )
+  await writeFile(getTaskPath(taskListId, taskId), JSON.stringify(updated, null, 2), 'utf-8')
 
   // Update blockedBy for dependent tasks
   if (updated.status === 'completed') {
-    await resolveDependencies(teamDir, taskListId, taskId)
+    await resolveDependencies(taskListId, taskId)
   }
 
   return updated
 }
 
-async function resolveDependencies(
-  teamDir: string,
-  taskListId: string,
-  completedTaskId: string,
-): Promise<void> {
-  const allTasks = await listTasks(teamDir, taskListId)
+async function resolveDependencies(taskListId: string, completedTaskId: string): Promise<void> {
+  const allTasks = await listTasks(taskListId)
   for (const task of allTasks) {
     if (task.dependencies.includes(completedTaskId) && task.status === 'pending') {
-      // Re-check if all deps are now resolved
-      const depsStillBlocked = task.dependencies.filter(depId => {
+      const stillBlocked = task.dependencies.filter(depId => {
         const dep = allTasks.find(t => t.id === depId)
         return dep && dep.status !== 'completed'
       })
-      if (depsStillBlocked.length === 0) {
-        await updateTask(teamDir, taskListId, task.id, t => ({
-          ...t,
-          blockedBy: [],
-        }))
+      if (stillBlocked.length === 0) {
+        await updateTask(taskListId, task.id, t => ({ ...t, blockedBy: [] }))
       }
     }
   }
 }
 
-export async function deleteTask(
-  teamDir: string,
-  taskListId: string,
-  taskId: string,
-): Promise<boolean> {
-  const path = getTaskPath(teamDir, taskListId, taskId)
+/** Delete a task file. */
+export async function deleteTask(taskListId: string, taskId: string): Promise<boolean> {
   try {
-    const { unlink } = await import('node:fs/promises')
-    await unlink(path)
+    await unlink(getTaskPath(taskListId, taskId))
     return true
-  } catch {
-    return false
-  }
+  } catch { return false }
 }
 
-// ─── Auto-Claim ────────────────────────────────────────────────
-
+/** Claim the next available unblocked task. */
 export async function claimNextAvailableTask(
-  teamDir: string,
-  taskListId: string,
-  agentName: string,
+  taskListId: string, agentName: string,
 ): Promise<TeamTask | null> {
-  const allTasks = await listTasks(teamDir, taskListId)
-
-  // Find first unblocked, unowned pending task
+  const allTasks = await listTasks(taskListId)
   for (const task of allTasks) {
     if (task.status !== 'pending') continue
     if (task.owner && task.owner !== agentName) continue
 
-    // Check dependencies
     const blocked = task.dependencies.some(depId => {
       const dep = allTasks.find(t => t.id === depId)
       return dep && dep.status !== 'completed'
     })
     if (blocked) continue
 
-    // Claim it
-    const claimed = await updateTask(teamDir, taskListId, task.id, t => {
+    const claimed = await updateTask(taskListId, task.id, t => {
       if (t.status !== 'pending') return null
-      return {
-        ...t,
-        status: 'in_progress',
-        owner: agentName,
-        startedAt: now(),
-      }
+      return { ...t, status: 'in_progress', owner: agentName, startedAt: now() }
     })
     if (claimed) return claimed
   }
-
   return null
 }
 
+/** Complete a task with result text. */
 export async function completeTask(
-  teamDir: string,
-  taskListId: string,
-  taskId: string,
-  agentName: string,
-  result?: string,
+  taskListId: string, taskId: string, agentName: string, result?: string,
 ): Promise<TeamTask | null> {
-  return updateTask(teamDir, taskListId, taskId, t => {
+  return updateTask(taskListId, taskId, t => {
     if (t.owner !== agentName) return t
-    return {
-      ...t,
-      status: 'completed',
-      completedAt: now(),
-      result: result ?? t.result,
-    }
+    return { ...t, status: 'completed', completedAt: now(), result: result ?? t.result }
   })
 }
 
+/** Unassign all in-progress tasks for an agent (agent left/disconnected). */
 export async function unassignTasksForAgent(
-  teamDir: string,
-  taskListId: string,
-  agentName: string,
-  reason?: string,
+  taskListId: string, agentName: string, reason?: string,
 ): Promise<void> {
-  const allTasks = await listTasks(teamDir, taskListId)
+  const allTasks = await listTasks(taskListId)
   for (const task of allTasks) {
     if (task.owner === agentName && task.status === 'in_progress') {
-      await updateTask(teamDir, taskListId, task.id, t => ({
-        ...t,
-        status: 'pending',
-        owner: undefined,
-        metadata: {
-          ...t.metadata,
-          unassignedAt: now(),
-          unassignedReason: reason ?? 'agent left',
-        },
+      await updateTask(taskListId, task.id, t => ({
+        ...t, status: 'pending', owner: undefined,
+        metadata: { ...t.metadata, unassignedAt: now(), unassignedReason: reason ?? 'agent left' },
       }))
     }
   }
 }
 
-// ─── Blocked check ─────────────────────────────────────────────
-
-export async function isTaskBlocked(
-  teamDir: string,
-  taskListId: string,
-  task: TeamTask,
-): Promise<boolean> {
+/** Check if a task has uncompleted dependencies. */
+export async function isTaskBlocked(taskListId: string, task: TeamTask): Promise<boolean> {
   if (task.dependencies.length === 0) return false
-  const allTasks = await listTasks(teamDir, taskListId)
+  const allTasks = await listTasks(taskListId)
   return task.dependencies.some(depId => {
     const dep = allTasks.find(t => t.id === depId)
     return dep && dep.status !== 'completed'

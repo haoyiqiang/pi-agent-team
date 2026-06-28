@@ -224,7 +224,7 @@ export function runLeader(pi: ExtensionAPI): void {
     if (!teamDir || !currentCtx) return
 
     try {
-      const msgs = await readMailbox(teamDir, TEAM_MAILBOX_NS, 'team-lead')
+      const msgs = await readMailbox(teamDir, 'team-lead')
 
       for (let i = 0; i < msgs.length; i++) {
         const msg = msgs[i]!
@@ -238,7 +238,7 @@ export function runLeader(pi: ExtensionAPI): void {
           // ── Idle notification from worker ─────────────
           if (isIdleNotification(parsed)) {
             const { markAsReadByIndex } = await import('./mailbox.js')
-            await markAsReadByIndex(teamDir, TEAM_MAILBOX_NS, 'team-lead', i)
+            await markAsReadByIndex(teamDir, 'team-lead', i)
 
             const teammate = teammates.get(parsed.from)
             if (teammate) {
@@ -275,7 +275,7 @@ export function runLeader(pi: ExtensionAPI): void {
           // ── Plan approval request from worker ──────────
           if (isPlanApprovalRequest(parsed)) {
             const { markAsReadByIndex } = await import('./mailbox.js')
-            await markAsReadByIndex(teamDir, TEAM_MAILBOX_NS, 'team-lead', i)
+            await markAsReadByIndex(teamDir, 'team-lead', i)
 
             // Forward to leader LLM for decision
             const taskInfo = parsed.taskId ? ` (task #${parsed.taskId})` : ''
@@ -291,7 +291,7 @@ export function runLeader(pi: ExtensionAPI): void {
           // ── Permission request from worker ─────────────
           if (isPermissionRequest(parsed)) {
             const { markAsReadByIndex } = await import('./mailbox.js')
-            await markAsReadByIndex(teamDir, TEAM_MAILBOX_NS, 'team-lead', i)
+            await markAsReadByIndex(teamDir, 'team-lead', i)
 
             pi.sendUserMessage(
               `[Team] Teammate '${parsed.from}' requests permission for tool "${parsed.toolName}".\n\n` +
@@ -306,7 +306,7 @@ export function runLeader(pi: ExtensionAPI): void {
           if (isShutdownApproved(parsed) || isShutdownRejected(parsed)) {
             // Handled by lifecycle.ts's polling loop. Just mark as read.
             const { markAsReadByIndex } = await import('./mailbox.js')
-            await markAsReadByIndex(teamDir, TEAM_MAILBOX_NS, 'team-lead', i)
+            await markAsReadByIndex(teamDir, 'team-lead', i)
             continue
           }
         }
@@ -465,7 +465,7 @@ export function runLeader(pi: ExtensionAPI): void {
 
       // Send initial prompt via mailbox
       const ts = new Date().toISOString()
-      await writeToMailbox(teamDir, TEAM_MAILBOX_NS, safeName, {
+      await writeToMailbox(teamDir, safeName, {
         from: 'team-lead',
         text: params.prompt,
         timestamp: ts,
@@ -508,7 +508,7 @@ export function runLeader(pi: ExtensionAPI): void {
       const ownerName = rawOwner
         ? rawOwner.replace(new RegExp(`-${sanitizeName(params.team_name)}$`), '')
         : undefined
-      const task = await createTask(teamDir, taskListId, {
+      const task = await createTask(taskListId, {
         subject: params.subject,
         description: params.description,
         owner: ownerName ? sanitizeName(ownerName) : undefined,
@@ -516,7 +516,7 @@ export function runLeader(pi: ExtensionAPI): void {
       })
 
       if (params.owner) {
-        await writeToMailbox(teamDir, TEAM_MAILBOX_NS, ownerName ?? sanitizeName(params.owner), {
+        await writeToMailbox(teamDir, ownerName ?? sanitizeName(params.owner), {
           from: 'team-lead',
           text: JSON.stringify({ type: 'task_assignment', taskId: task.id, from: 'team-lead', subject: task.subject, timestamp: ts }),
           timestamp: ts,
@@ -537,7 +537,7 @@ export function runLeader(pi: ExtensionAPI): void {
     parameters: Type.Object({ team_name: Type.String() }),
     execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
       const teamDir = getTeamDir(sanitizeName(params.team_name))
-      const tasks = await listTasks(teamDir, sanitizeName(params.team_name))
+      const tasks = await listTasks( sanitizeName(params.team_name))
       return { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }], details: { tasks } }
     },
   })
@@ -551,7 +551,7 @@ export function runLeader(pi: ExtensionAPI): void {
     parameters: Type.Object({ team_name: Type.String(), task_id: Type.String() }),
     execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
       const teamDir = getTeamDir(sanitizeName(params.team_name))
-      const task = await getTask(teamDir, sanitizeName(params.team_name), params.task_id)
+      const task = await getTask( sanitizeName(params.team_name), params.task_id)
       if (!task) throw new Error(`Task #${params.task_id} not found.`)
       return { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }], details: { task } }
     },
@@ -576,7 +576,7 @@ export function runLeader(pi: ExtensionAPI): void {
       const teamDir = getTeamDir(safeTeam)
       const taskListId = safeTeam
 
-      const updated = await updateTask(teamDir, taskListId, params.task_id, t => {
+      const updated = await updateTask(taskListId, params.task_id, t => {
         const next = { ...t }
         if (params.status) next.status = params.status
         if (params.owner !== undefined) next.owner = sanitizeName(params.owner)
@@ -615,7 +615,7 @@ export function runLeader(pi: ExtensionAPI): void {
     execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
       const teamDir = getTeamDir(sanitizeName(params.team_name))
       const ts = new Date().toISOString()
-      await writeToMailbox(teamDir, TEAM_MAILBOX_NS, sanitizeName(params.recipient), {
+      await writeToMailbox(teamDir, sanitizeName(params.recipient), {
         from: 'team-lead',
         text: params.content,
         timestamp: ts,
@@ -626,7 +626,7 @@ export function runLeader(pi: ExtensionAPI): void {
       const parsed = tryParseJson(params.content)
       if (parsed && isPermissionResponse(parsed)) {
         // Urgent delivery for permission responses
-        await writeToMailbox(teamDir, TEAM_MAILBOX_NS, sanitizeName(params.recipient), {
+        await writeToMailbox(teamDir, sanitizeName(params.recipient), {
           from: 'team-lead',
           text: params.content,
           timestamp: ts,
@@ -636,7 +636,7 @@ export function runLeader(pi: ExtensionAPI): void {
       }
       // If this is a plan approval/rejection, also send a followUp to the worker
       if (parsed && (parsed.type === 'plan_approved' || parsed.type === 'plan_rejected')) {
-        await writeToMailbox(teamDir, TEAM_MAILBOX_NS, sanitizeName(params.recipient), {
+        await writeToMailbox(teamDir, sanitizeName(params.recipient), {
           from: 'team-lead',
           text: params.content,
           timestamp: ts,
@@ -667,7 +667,7 @@ export function runLeader(pi: ExtensionAPI): void {
       const ts = new Date().toISOString()
       for (const member of config.members) {
         if (member.role === 'lead') continue
-        await writeToMailbox(teamDir, TEAM_MAILBOX_NS, member.name, {
+        await writeToMailbox(teamDir, member.name, {
           from: 'team-lead',
           text: params.content,
           timestamp: ts,
@@ -742,7 +742,7 @@ export function runLeader(pi: ExtensionAPI): void {
 
       const safeTeam = sanitizeName(params.team_name)
       await removeMember(safeTeam, safeName)
-      await unassignTasksForAgent(getTeamDir(safeTeam), safeTeam, safeName, 'killed')
+      await unassignTasksForAgent(safeTeam, safeName, 'killed')
       renderWidget()
       return { content: [{ type: 'text', text: `Teammate '${safeName}' killed.` }] }
     },
