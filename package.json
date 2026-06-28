@@ -1,0 +1,29 @@
+{
+  "name": "pi-agent-teams-tmux",
+  "version": "0.1.0",
+  "description": "1:1 replication of Claude Code agent teams for Pi (tmux mode only)",
+  "type": "module",
+  "main": "index.ts",
+  "files": [
+    "index.ts",
+    "src"
+  ],
+  "keywords": [
+    "pi",
+    "pi-package",
+    "pi-extension",
+    "teams",
+    "agent-teams",
+    "swarm",
+    "multi-agent"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@sinclair/typebox": ">=0.34.0",
+    "proper-lockfile": "^4.1.2"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
